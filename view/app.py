@@ -13,9 +13,9 @@ import os
 
 load_dotenv()
 
-# st.set_page_config(page_title="Invoice AI Agent", layout="wide")
+st.set_page_config(page_title="Invoice AI Agent", layout="wide")
 
-# st.title("Tabular Salesforce AI Agent")
+st.title("Tabular Salesforce AI Agent")
 
 data = pd.read_csv("../data/data.csv" ,  encoding="latin1" )
 
@@ -29,8 +29,9 @@ def data_preprocess(df):
     invalid_rows = df[(df['Quantity'] <= 0) | (df['UnitPrice'] <= 0)].index
     df.drop(index=invalid_rows, inplace=True)
     df = df[~df['InvoiceNo'].astype(str).str.startswith('C')]
+    return df
 
-data_preprocess(data)
+data = data_preprocess(data)
 def Metrics(df=data):
     total_revenue = df["Revenue"].sum()
     total_invoices = df["InvoiceNo"].nunique()
@@ -147,21 +148,8 @@ class SalesforceState(TypedDict, total=False):
     correlation_matrix: Dict[str, Dict[str, float]]   
 
 
-# if "messages" not in st.session_state:
-#     st.session_state["messages"] = []
-
-# for msg in st.session_state["messages"]:
-#         with st.chat_message(msg["role"]):
-#             st.markdown(msg["content"])
-
-# if query := st.chat_input("Ask me anything about invoices..."):
-#     st.session_state["messages"].append({"role": "user", "content": query})
-#     with st.chat_message("user"):
-#         st.markdown(query)
-
 def ask_handler(state):
-    query = input("ask about the data: " )
-    state["query"] = query
+    state["query"] = st.session_state.user_query
     return state
 
 def metrics_handler(state: SalesforceState) -> SalesforceState:
@@ -207,7 +195,7 @@ graph.add_edge("customers", "stats")
 llm = ChatOpenAI(
             model="openai/gpt-oss-20b:free",
             temperature=0,
-            api_key=os.getenv('OPENAI_API_KEY'),
+            api_key=os.getenv('api_key'),
             base_url="https://openrouter.ai/api/v1"
         )
 
@@ -250,6 +238,12 @@ graph.add_edge("stats", "llm")
 
 saleforce_agent = graph.compile()
 
-state = {}
-final_state = saleforce_agent.invoke(state)
-print(final_state.get("response"))
+
+
+st.text_input("Ask me about invoices:", key="user_query")
+if st.button("Submit"):
+    if st.session_state.user_query:
+        state = {}
+        final_state = saleforce_agent.invoke(state)
+        st.markdown("**AI Response:**")
+        st.write(final_state.get("response"))
