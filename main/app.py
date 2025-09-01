@@ -12,6 +12,17 @@ from langchain_openai import ChatOpenAI
 from supabase import create_client, Client
 import supabase
 import os
+from langchain.prompts import PromptTemplate
+from langchain.agents import initialize_agent, AgentType
+from langchain.chat_models import ChatOpenAI
+from langchain.memory import ConversationBufferMemory
+from sentence_transformers import SentenceTransformer
+from datetime import datetime
+from langchain.tools import Tool
+
+now = datetime.now()
+
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 load_dotenv()
 
@@ -24,13 +35,13 @@ url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-response = (
+resultponse = (
     supabase.table("invoices_table")
     .select("*")
     .execute()
 )
 
-data = pd.DataFrame(response.data)
+data = pd.DataFrame(resultponse.data)
 
 data.rename(columns={
     "stockcode": "StockCode",
@@ -84,7 +95,7 @@ def monthly_sales_trend(df=data):
 
 def customer_segmentation(df, n_clusters=4):
     df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"])
-    df = df.reset_index(drop=True)
+    df = df.resultet_index(drop=True)
     NOW = df["InvoiceDate"].max() + dt.timedelta(days=1)
     rfm = df.groupby("CustomerID").agg({
         "InvoiceDate": lambda x: (NOW - x.max()).days,  
@@ -178,19 +189,19 @@ def monthly_growth(df):
     growth = monthly.pct_change().fillna(0) * 100
     return growth.to_dict()
 
-def check_kpi_alerts(df, revenue_threshold=50000, invoices_threshold=100):
+def check_kpi_alerts(df, revenue_thresulthold=50000, invoices_thresulthold=100):
     metrics = Metrics(df)
     alerts = []
-    if metrics['total_revenue'] < revenue_threshold:
-        alerts.append(f"Revenue below threshold: ${metrics['total_revenue']:.2f}")
-    if metrics['total_invoices'] < invoices_threshold:
-        alerts.append(f"Invoices below threshold: {metrics['total_invoices']}")
+    if metrics['total_revenue'] < revenue_thresulthold:
+        alerts.append(f"Revenue below thresulthold: ${metrics['total_revenue']:.2f}")
+    if metrics['total_invoices'] < invoices_thresulthold:
+        alerts.append(f"Invoices below thresulthold: {metrics['total_invoices']}")
     return alerts
 
 class SalesforceState(TypedDict, total=False):
     query: str
-    response: str
-
+    resultponse: str
+    is_it_chat: bool
     metrics: Dict[str, float]
     top_selled_products: Dict[str, int]
     top_revenue_products: Dict[str, float]
@@ -263,6 +274,8 @@ def alerts_handler(state: SalesforceState) -> SalesforceState:
     state["alerts"] = check_kpi_alerts(data)
     return state
 
+
+
 def full_analysis_handler(state: SalesforceState) -> SalesforceState:
     state = ask_handler(state)
     state = metrics_handler(state)
@@ -275,23 +288,114 @@ def full_analysis_handler(state: SalesforceState) -> SalesforceState:
     state = alerts_handler(state)
     return state
 
-graph = StateGraph(state_schema=SalesforceState)
 
+def get_metrics_summary(state=None) -> str:
+    metrics = Metrics(data)
+    summary = (
+        f"Total Revenue: ${metrics['total_revenue']:.2f}\n"
+        f"Total Invoices: {metrics['total_invoices']}\n"
+        f"Total Customers: {metrics['total_customers']}"
+    )
+    return summary
 
-graph.add_node("ask", ask_handler)
-graph.add_node("metrics", metrics_handler)
-graph.add_node("products", products_handler)
-graph.add_node("customers", customers_handler)
-graph.add_node("stats", stats_handler)
+metrics_tool = Tool(
+    name="MetricsTool",
+    func=get_metrics_summary,
+    description="Returns total revenue, invoices, and customer count."
+)
 
-graph.set_entry_point("ask")
-graph.add_edge("ask", "metrics")
-graph.add_edge("metrics", "products")
-graph.add_edge("products", "customers")
-graph.add_edge("customers", "stats")
+def get_products_summary(state=None) -> str:
+    top_sold = top_selled_product().head(5).to_dict()
+    top_revenue = top_revenue_product().head(5).to_dict()
+    top_sold_str = "\n".join([f"{k}: {v}" for k, v in top_sold.items()])
+    top_rev_str = "\n".join([f"{k}: ${v:.2f}" for k, v in top_revenue.items()])
+    return f"Top Selling Products:\n{top_sold_str}\n\nTop Revenue Products:\n{top_rev_str}"
 
+products_tool = Tool(
+    name="ProductsTool",
+    func=get_products_summary,
+    description="Returns top-selling and top-revenue products in a readable format."
+)
 
+def get_customers_summary(state=None) -> str:
+    rfm = customer_segmentation(data)
+    top_customers = top_customers_by_revenue(data)
+    top_customers_str = "\n".join([f"{k}: ${v:.2f}" for k, v in dict(list(top_customers.items())[:5]).items()])
+    return f"RFM Summary:\n{rfm['summary']}\n\nTop Customers by Revenue:\n{top_customers_str}"
 
+customers_tool = Tool(
+    name="CustomersTool",
+    func=get_customers_summary,
+    description="Returns RFM summary and top customers by revenue."
+)
+
+def get_stats_summary(state=None) -> str:
+    monthly_trend = monthly_sales_trend(data).head(5).to_dict()
+    monthly_trend_str = "\n".join([f"{k}: ${v:.2f}" for k, v in monthly_trend.items()])
+    return f"Monthly Sales Trend (first 5 months):\n{monthly_trend_str}"
+
+stats_tool = Tool(
+    name="StatsTool",
+    func=get_stats_summary,
+    description="Provides monthly sales trends in a readable format."
+)
+
+def get_least_summary(state=None) -> str:
+    least_country = least_country_sales(data)
+    least_product = least_product_sales(data)
+    least_country_str = "\n".join([f"{k}: ${v:.2f}" for k, v in dict(list(least_country.items())[:5]).items()])
+    least_product_str = "\n".join([f"{k}: ${v:.2f}" for k, v in dict(list(least_product.items())[:5]).items()])
+    return f"Least Performing Countries:\n{least_country_str}\n\nLeast Performing Products:\n{least_product_str}"
+
+least_tool = Tool(
+    name="LeastTool",
+    func=get_least_summary,
+    description="Returns least performing countries and products."
+)
+
+def get_retention_summary(state=None) -> str:
+    retention = customer_retention(data)
+    return f"Customer Retention Rate: {retention*100:.2f}%"
+
+retention_tool = Tool(
+    name="RetentionTool",
+    func=get_retention_summary,
+    description="Returns the customer retention rate."
+)
+
+def get_growth_summary(state=None) -> str:
+    growth = monthly_growth(data)
+    growth_str = "\n".join([f"{k}: {v:.2f}%" for k, v in dict(list(growth.items())[:5]).items()])
+    return f"Monthly Growth (first 5 months):\n{growth_str}"
+
+growth_tool = Tool(
+    name="GrowthTool",
+    func=get_growth_summary,
+    description="Provides monthly revenue growth percentages."
+)
+
+def get_alerts_summary(state=None) -> str:
+    alerts = check_kpi_alerts(data)
+    if not alerts:
+        return "No KPI alerts detected."
+    return "KPI Alerts:\n" + "\n".join(alerts)
+
+alerts_tool = Tool(
+    name="AlertsTool",
+    func=get_alerts_summary,
+    description="Checks for KPI alerts and reports them."
+)
+
+tools = [
+    metrics_tool,
+    products_tool,
+    customers_tool,
+    stats_tool,
+    least_tool,
+    retention_tool,
+    growth_tool,
+    alerts_tool
+]
 
 llm = ChatOpenAI(
             model="cognitivecomputations/dolphin3.0-r1-mistral-24b:free",
@@ -300,39 +404,33 @@ llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1"
         )
 
+def is_chat(state: SalesforceState):
+    pass
+
+
+memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+graph = StateGraph(state_schema=SalesforceState)
+
+
+graph.add_node("ask", ask_handler)
+graph.add_node("full_analysis", full_analysis_handler)
+
+graph.set_entry_point("ask")
+graph.add_edge("ask", "full_analysis")
 
 
 saleforce_agent = graph.compile()
 
 
-prompt = """You are a **Salesforce Invoice Analytics AI Agent** that assists business managers with invoice, sales, and customer insights.  
-        
-        Instructions:
-        1. **Interpret the manager’s request** carefully.  
-           - If the question requires data, call the appropriate tool(s).  
-           - If multiple tools are needed, call them step by step.  
-           - Do not make up numbers — only use tool outputs.  
-        
-        2. **Response Style**  
-           - Always respond in a **clear, professional, insight-driven** tone.  
-           - Use **plain English** — avoid technical jargon unless explicitly asked.  
-           - Use **bullets or short paragraphs** for readability.  
-           - When numbers are important, highlight them with **bold formatting** (e.g., “**$25,430** in revenue”).  
-        
-        3. **Flexibility**  
-           - If the manager asks for raw data (e.g., “Show me the top 5 products”), return it in a **clean table or list**.  
-           - If the manager asks for insights (e.g., “Give me an overview of sales health”), provide an **executive-style summary**:
-             - **Executive Summary**: 2–3 sentences on sales health.  
-             - **Key Insights**: bullet points on top products, customers, revenue.  
-             - **Trends & Patterns**: monthly sales changes, distribution anomalies.  
-             - **Customer Segmentation**: describe RFM clusters in simple terms.  
-             - **Actionable Recommendations**: 3–5 business-oriented suggestions.  
-        
-        4. **Important Rules**  
-           - Only use information from tools — never fabricate results.  
-           - If the query is ambiguous, ask a clarifying question.  
-           - Be concise and actionable — your audience is business managers, not data scientists.  
-        
-        You are not just summarizing — you are a **business copilot** that answers queries, runs the right tools, and communicates insights effectively.
-        """
-
+agent = initialize_agent(
+   
+    tools=tools,
+    llm=llm,
+    agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
+     memory= memory,
+    handle_parsing_errors = True, 
+    verbose=True
+)
+response = agent.run("Show me top selling products and retention stats")
+print(response)
