@@ -1,5 +1,4 @@
 import langgraph
-import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime as dt
@@ -19,18 +18,12 @@ from langchain.memory import ConversationBufferMemory
 from sentence_transformers import SentenceTransformer
 from datetime import datetime
 from langchain.tools import Tool
-
+from flask_cors import CORS
 now = datetime.now()
 
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 load_dotenv()
-
-st.set_page_config(page_title="Invoice AI Agent", layout="wide")
-
-st.title("Tabular Salesforce AI Agent")
-
-
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
@@ -95,7 +88,7 @@ def monthly_sales_trend(df=data):
 
 def customer_segmentation(df, n_clusters=4):
     df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"])
-    df = df.resultet_index(drop=True)
+    df = df.reset_index(drop=True)
     NOW = df["InvoiceDate"].max() + dt.timedelta(days=1)
     rfm = df.groupby("CustomerID").agg({
         "InvoiceDate": lambda x: (NOW - x.max()).days,  
@@ -169,9 +162,10 @@ def least_country_sales(df, num=10):
     return df.groupby("Country")["Revenue"].sum().sort_values(ascending=True).head(num).to_dict()
 
 def least_product_sales(df, num=10):
-    return df.groupby("ProductID")["Revenue"].sum().sort_values(ascending=True).head(num).to_dict()
+    return df.groupby("Description")["Revenue"].sum().sort_values(ascending=True).head(num).to_dict()
+
 def least_product_revenue(df, num=10):
-    return df.groupby("ProductID")["Revenue"].sum().sort_values(ascending=True).head(num).to_dict()
+    return df.groupby("Description")["Revenue"].sum().sort_values(ascending=True).head(num).to_dict()
 
 def cohort_analysis(df):
     df['FirstPurchaseMonth'] = df.groupby('CustomerID')['InvoiceDate'].transform('min').dt.to_period('M')
@@ -226,8 +220,8 @@ class SalesforceState(TypedDict, total=False):
     alerts: List[str]
 
 
-def ask_handler(state: SalesforceState) -> SalesforceState:
-    state["query"] = st.session_state.user_query
+def ask_handler(state: SalesforceState , user_query: str) -> SalesforceState:
+    state["query"] = user_query
     return state
 
 def metrics_handler(state: SalesforceState) -> SalesforceState:
@@ -237,6 +231,7 @@ def metrics_handler(state: SalesforceState) -> SalesforceState:
 def products_handler(state: SalesforceState) -> SalesforceState:
     state["top_selled_products"] = top_selled_product().to_dict()
     state["top_revenue_products"] = top_revenue_product().to_dict()
+    state["top_country_sales"] = top_country().to_dict()
     return state
 
 
@@ -274,6 +269,14 @@ def alerts_handler(state: SalesforceState) -> SalesforceState:
     state["alerts"] = check_kpi_alerts(data)
     return state
 
+def country_products_handler(state: SalesforceState, country: str, num: int = 10) -> SalesforceState:
+    state[f"top_products_{country}"] = top_selled_product_by_country(country, num).to_dict()
+    return state
+
+def top_countries_handler(state: SalesforceState, num: int = 10) -> SalesforceState:
+    state["top_country_sales"] = top_country(num).to_dict()
+    return state
+
 
 
 def full_analysis_handler(state: SalesforceState) -> SalesforceState:
@@ -289,7 +292,10 @@ def full_analysis_handler(state: SalesforceState) -> SalesforceState:
     return state
 
 
-def get_metrics_summary(state=None) -> str:
+from langchain.tools import Tool
+
+# Metrics Tool
+def get_metrics_summary(state=None) -> str: 
     metrics = Metrics(data)
     summary = (
         f"Total Revenue: ${metrics['total_revenue']:.2f}\n"
@@ -304,6 +310,7 @@ metrics_tool = Tool(
     description="Returns total revenue, invoices, and customer count."
 )
 
+# Products Tool
 def get_products_summary(state=None) -> str:
     top_sold = top_selled_product().head(5).to_dict()
     top_revenue = top_revenue_product().head(5).to_dict()
@@ -315,6 +322,18 @@ products_tool = Tool(
     name="ProductsTool",
     func=get_products_summary,
     description="Returns top-selling and top-revenue products in a readable format."
+)
+
+
+def get_top_countries_summary(state=None) -> str:
+    top_countries = top_country().head(5).to_dict()
+    top_countries_str = "\n".join([f"{k}: ${v:.2f}" for k, v in top_countries.items()])
+    return f"Top Countries by Revenue:\n{top_countries_str}"
+
+top_countries_tool = Tool(
+    name="TopCountriesTool",
+    func=get_top_countries_summary,
+    description="Returns top countries by revenue."
 )
 
 def get_customers_summary(state=None) -> str:
@@ -386,9 +405,35 @@ alerts_tool = Tool(
     description="Checks for KPI alerts and reports them."
 )
 
+from pydantic import BaseModel, Field
+
+class CountryProductsInput(BaseModel):
+    country: str = Field(..., description="The country to fetch top products for")
+    num: int = Field(10, description="Number of products to return (default 10)")
+
+
+def get_country_products_summary(input_str: str) -> str:
+    """Input should be 'country,num' e.g. 'USA,5'"""
+    parts = input_str.split(",")
+    country = parts[0].strip()
+    num = int(parts[1]) if len(parts) > 1 else 10
+
+    products = top_selled_product_by_country(country, num).to_dict()
+    products_str = "\n".join([f"{k}: {v}" for k, v in products.items()])
+    return f"Top {num} Products in {country}:\n{products_str}"
+
+country_products_tool = Tool(
+    name="CountryProductsTool",
+    func=get_country_products_summary,
+    description="Input format: 'Country,Num'. Example: 'USA,5' → returns top 5 products in USA."
+)
+
+
 tools = [
     metrics_tool,
     products_tool,
+    country_products_tool,
+    top_countries_tool,
     customers_tool,
     stats_tool,
     least_tool,
@@ -397,8 +442,9 @@ tools = [
     alerts_tool
 ]
 
+
 llm = ChatOpenAI(
-            model="cognitivecomputations/dolphin3.0-r1-mistral-24b:free",
+            model="mistralai/mistral-small-3.2-24b-instruct:free",
             temperature=0.5,
             api_key=os.getenv('api_key'),
             base_url="https://openrouter.ai/api/v1"
@@ -432,5 +478,22 @@ agent = initialize_agent(
     handle_parsing_errors = True, 
     verbose=True
 )
-response = agent.run("Show me top selling products and retention stats")
-print(response)
+# response = agent.run("Show me top purchasing countries")
+# print(response)
+
+
+from flask import Flask
+from flask import request
+
+app = Flask(__name__)
+CORS(app)
+
+
+@app.route('/chat', methods=['POST'])
+def index():
+        user_input = request.json['user_input']
+        response = agent.run(user_input)
+        return {"response" : response}
+
+if __name__ == '__main__':
+    app.run(debug=True , port=5000)
