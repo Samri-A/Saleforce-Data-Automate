@@ -9,15 +9,17 @@ import {
   ListItemText,
   Toolbar,
   AppBar,
+  Button,
   Typography,
   IconButton,
 } from "@mui/material";
-import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
 import MenuIcon from "@mui/icons-material/Menu";
 import ChatPage from "./pages/ChatPage";
 import DashboardPage from "./pages/DashboardPage";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import CloseIcon from "@mui/icons-material/Close";
+import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
+import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined';
 
 
 const drawerWidth = 240;
@@ -56,7 +58,7 @@ function App() {
 
       <ListItemButton onClick={() => setSelectedPage("dashboard")} sx={{ color: selectedPage === "dashboard" ? "grey" : "white" }}>
         <ListItemIcon>
-          <SpaceDashboardOutlinedIcon
+          <AssessmentOutlinedIcon
             
           />
         </ListItemIcon>
@@ -90,8 +92,14 @@ function App() {
             <MenuIcon />
           </IconButton>
           <Typography noWrap sx={{fontFamily : "cursive"}}>
-            YourSaleforce
+            SaleforceAnalysis
           </Typography>
+          <Box marginLeft={'auto'} >
+          <Button variant="contained" sx={{ textTransform: "none"}} >
+            <CalendarTodayOutlinedIcon/>
+            <Typography fontSize={'14px'}>View Report</Typography>
+          </Button>
+          </Box>
         </Toolbar>
       </AppBar>
 

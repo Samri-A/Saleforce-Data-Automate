@@ -8,8 +8,65 @@ import {
   ListItem,
   ListItemText,
 } from "@mui/material";
+import { Line } from "react-chartjs-2";
+import { useState , useEffect } from "react";
+import SalesMap from "./map";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+} from "chart.js";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+
+async function fetchDashboardData() {
+  const response = await fetch("http://localhost:5000/dashboard");
+  if (!response.ok) {
+    throw new Error("Failed to fetch dashboard data");
+  }
+  return response.json();
+}
 
 function DashboardPage() {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [monthlyTrend, setMonthlyTrend] = useState({ labels: [], datasets: [] });
+  useEffect(() => {
+    fetchDashboardData()
+      .then((data) => setDashboardData(data))
+      .catch((error) => console.error(error));
+  }, []);
+
+  if (!dashboardData) {
+    return <Typography>Loading...</Typography>;
+  }
+
+  const options = {
+    responsive: true,
+    plugins: {
+      legend: { position: "top" as const },
+      title: { display: true, text: "Monthly Revenue Trend" }
+    },
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
+  };
+
   return (
     <Box>
       <Stack
@@ -19,10 +76,10 @@ function DashboardPage() {
         flexWrap="wrap"
       >
         {[
-          { label: "Total Users", value: "2,845", trend: "+12.5%" },
-          { label: "Messages", value: "18,247", trend: "+8.2%" },
-          { label: "Active Sessions", value: "542", trend: "-2.1%" },
-          { label: "Response Time", value: "1.2s", trend: "-15.3%" },
+          { label: "Total Revenue", value: dashboardData["Total Revenue"], trend: "+8.2%" },
+          { label: "Total Customers", value: dashboardData["Total Customers"], trend: "+12.5%" },
+          { label: "Total Invoices", value: dashboardData["Total Invoices"], trend: "-2.1%" },
+          // { label: "Monthly Growth", value: dashboardData["Monthly Growth"], trend: "-15.3%" },
         ].map((stat, idx) => (
           <Paper
             key={idx}
@@ -46,53 +103,27 @@ function DashboardPage() {
         ))}
       </Stack>
 
-      {/* Activity + Recent */}
       <Stack
         direction={{ xs: "column", md: "row" }}
         spacing={2}
         mt={2}
         alignItems="stretch"
       >
-        {/* Left: Activity */}
-        <Paper sx={{ p: 2, flex: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Activity Overview
-          </Typography>
-          <Typography>Chat Sessions</Typography>
-          <LinearProgress variant="determinate" value={85} sx={{ mb: 2 }} />
-          <Typography>User Satisfaction</Typography>
-          <LinearProgress variant="determinate" value={92} sx={{ mb: 2 }} />
-          <Typography>Response Rate</Typography>
-          <LinearProgress variant="determinate" value={68} />
-        </Paper>
-
-        {/* Right: Recent Activity */}
-        <Paper sx={{ p: 2, flex: 1 }}>
-          <Typography variant="h6" gutterBottom>
-            Recent Activity
-          </Typography>
-          <List>
-            <ListItem>
-              <ListItemText
-                primary="Alice Johnson"
-                secondary="Started new chat · 2 min ago"
-              />
-            </ListItem>
-            <ListItem>
-              <ListItemText
-                primary="Bob Smith"
-                secondary="Completed session · 5 min ago"
-              />
-            </ListItem>
-            <ListItem>
-              <ListItemText
-                primary="Carol Davis"
-                secondary="Updated profile · 12 min ago"
-              />
-            </ListItem>
-          </List>
-        </Paper>
+        
+        <Line data={{
+      labels: Object.keys(dashboardData["Monthly Trend"]),          
+          datasets: [
+            {
+              label: "Revenue",
+              data: Object.values(dashboardData["Monthly Trend"]), 
+              borderColor: "rgb(75, 192, 192)",
+              backgroundColor: "rgba(75, 192, 192, 0.2)",
+              tension: 0.4                     
+            }
+          ]}
+        } options={options} />
       </Stack>
+      <SalesMap/>
     </Box>
   );
 }

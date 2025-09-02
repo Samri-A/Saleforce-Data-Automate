@@ -24,7 +24,7 @@ function ChatPage() {
   const [messages, setMessages] = useState([
     {
       id: 1,
-      text: "Hello! I'm your Salesforce AI assistant. How can I help you today?",
+      text: "Hello! I'm your Salesforce Data AI assistant. How can I help you today?",
       sender: "ai",
       time: new Date().toLocaleTimeString(),
     },
@@ -81,11 +81,7 @@ function ChatPage() {
               }}
             >
               <Box display="flex" alignItems="center">
-                {msg.sender === "ai" && (
-                  <Avatar sx={{ bgcolor: "primary.main", mr: 1 }}>
-                    <SmartToyIcon />
-                  </Avatar>
-                )}
+                {msg.sender === "ai"}
                 <Box>
                   <Typography>{msg.text}</Typography>
                   <Typography variant="caption" color="text.secondary">
@@ -98,7 +94,6 @@ function ChatPage() {
         ))}
       </Box>
 
-      {/* Input field */}
       <Box display="flex" alignItems="center" px={2} py={1}>
         <TextField
           fullWidth
