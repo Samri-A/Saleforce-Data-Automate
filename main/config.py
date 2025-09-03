@@ -18,3 +18,10 @@ llm: ChatOpenAI = ChatOpenAI(
             api_key=os.getenv('api_key'),
             base_url="https://openrouter.ai/api/v1"
         )
+
+chat_llm = ChatOpenAI(
+            model="openai/gpt-oss-20b:free",
+            temperature=0.5,
+            api_key=os.getenv('api_key'),
+            base_url="https://openrouter.ai/api/v1"
+        )
