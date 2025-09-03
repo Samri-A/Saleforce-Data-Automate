@@ -1,4 +1,11 @@
-from langchain.tools import Tool
+from langchain.tools import Tool , tool
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+import networkx as nx
+import tempfile
+import pandas as pd
 from analysis import (
     Metrics,
     top_selled_product,
@@ -121,3 +128,135 @@ def alerts_tool(df):
         func=get_alerts_summary,
         description="Returns KPI alerts summary."
     )
+
+
+
+def _save_plot(title: str = "plot"):
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    plt.title(title)
+    plt.savefig(tmp_file.name, format="png", bbox_inches="tight")
+    plt.close()
+    return f"Graph saved at {tmp_file.name}"
+
+
+@tool("bar_chart", return_direct=True)
+def bar_chart(data: dict, title: str = "Bar Chart"):
+    """
+    Generate a bar chart.
+    Args:
+        data (dict): key=label, value=numeric value
+        title (str): chart title
+    Returns: path to PNG image
+    """
+    plt.figure(figsize=(8,6))
+    pd.Series(data).plot(kind="bar")
+    return _save_plot(title)
+
+@tool("line_chart", return_direct=True)
+def line_chart(data: dict, title: str = "Line Chart"):
+    """
+    Generate a line chart.
+    Args:
+        data (dict): key=x-axis, value=numeric
+        title (str): chart title
+    """
+    plt.figure(figsize=(8,6))
+    pd.Series(data).plot(kind="line", marker="o")
+    return _save_plot(title)
+
+
+@tool("area_chart", return_direct=True)
+def area_chart(data: dict, title: str = "Area Chart"):
+    """
+    Generate an area chart.
+    Args:
+        data (dict): key=x-axis, value=numeric
+    """
+    plt.figure(figsize=(8,6))
+    pd.Series(data).plot(kind="area", alpha=0.4)
+    return _save_plot(title)
+
+
+@tool("histogram", return_direct=True)
+def histogram(values: list, bins: int = 10, title: str = "Histogram"):
+    """
+    Generate a histogram from numeric values.
+    Args:
+        values (list): numeric data
+        bins (int): number of bins
+    """
+    plt.figure(figsize=(8,6))
+    plt.hist(values, bins=bins, alpha=0.7)
+    return _save_plot(title)
+
+
+@tool("box_plot", return_direct=True)
+def box_plot(values: list, title: str = "Box Plot"):
+    """
+    Generate a box plot.
+    Args:
+        values (list): numeric data
+    """
+    plt.figure(figsize=(6,6))
+    plt.boxplot(values, vert=True, patch_artist=True)
+    return _save_plot(title)
+
+@tool("scatter_plot", return_direct=True)
+def scatter_plot(x: list, y: list, labels: list = None, title: str = "Scatter Plot"):
+    """
+    Generate a scatter plot.
+    Args:
+        x (list): x-axis values
+        y (list): y-axis values
+        labels (list): optional categories for coloring
+    """
+    plt.figure(figsize=(8,6))
+    if labels:
+        sns.scatterplot(x=x, y=y, hue=labels, palette="Set2")
+    else:
+        plt.scatter(x, y, alpha=0.7)
+    return _save_plot(title)
+
+
+@tool("heatmap", return_direct=True)
+def heatmap(matrix: dict, title: str = "Heatmap"):
+    """
+    Generate a heatmap from a correlation matrix or pivot table.
+    Args:
+        matrix (dict): nested dict or 2D-like structure
+    """
+    df = pd.DataFrame(matrix)
+    plt.figure(figsize=(8,6))
+    sns.heatmap(df, annot=True, fmt=".2f", cmap="coolwarm")
+    return _save_plot(title)
+
+
+@tool("pie_chart", return_direct=True)
+def pie_chart(data: dict, title: str = "Pie Chart"):
+    """
+    Generate a pie chart.
+    Args:
+        data (dict): key=label, value=numeric value
+    """
+    plt.figure(figsize=(7,7))
+    plt.pie(data.values(), labels=data.keys(), autopct="%1.1f%%", startangle=90)
+    return _save_plot(title)
+
+
+
+@tool("network_graph", return_direct=True)
+def network_graph(edges: list, title: str = "Network Graph"):
+    """
+    Generate a network/transaction graph.
+    Args:
+        edges (list): list of tuples (source, target, weight)
+    """
+    G = nx.DiGraph()
+    for u, v, w in edges:
+        G.add_edge(u, v, weight=w, label=str(w))
+    pos = nx.spring_layout(G)
+    plt.figure(figsize=(8,6))
+    nx.draw(G, pos, with_labels=True, node_size=2000, node_color="lightblue", arrows=True)
+    edge_labels = nx.get_edge_attributes(G, "label")
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+    return _save_plot(title)

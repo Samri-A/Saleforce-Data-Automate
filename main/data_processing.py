@@ -19,7 +19,6 @@ def load_data_from_supabase(table_name: str = "invoices_table") -> pd.DataFrame:
         "country": "Country",
         "invoiceno": "InvoiceNo"
     }, inplace=True)
-    print(df.info())
     return df
 
 

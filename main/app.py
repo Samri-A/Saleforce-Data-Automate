@@ -15,7 +15,7 @@ from tools import (
     growth_tool,
     alerts_tool
 )
-from handlers import full_analysis_handler , SalesforceState
+from handlers import full_analysis_handler , SalesforceState , insight_handler
 from config import llm
 import langgraph
 from langgraph.graph.state import StateGraph
@@ -57,17 +57,17 @@ agent = initialize_agent(
 @app.route('/chat', methods=['POST'])
 def index():
         user_input = request.json['user_input']
-        response = agent.run(user_input)
+        response = agent.invoke(user_input)
         return {"response": response}
 
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
     metrics = Metrics(df)
     monthly_trend = monthly_sales_trend(df).to_dict()
-    print(monthly_trend)
     region_sales = sales_country(df).to_dict()
     # growth = monthly_growth(df)
     # print(growth)
+    report()
     return (
             {"Total Revenue": f"${metrics['total_revenue']:.2f}",
             "Total Invoices": metrics['total_invoices'],
@@ -79,15 +79,21 @@ def dashboard():
         )
 
 
-@app.route('/report' , methods=['GET'])
+# @app.route('/report' , methods=['GET'])
 def report():
     graph =StateGraph(state_schema= SalesforceState)
-    graph.add_node("full_analysis", full_analysis_handler)
+    graph.add_node("full_analysis", lambda state: full_analysis_handler(state= state, df=df))
+    graph.add_node("insight_handler" , lambda state: insight_handler( state=state, llm=llm))
     
-    graph.set_entry_point("ask")
-    graph.add_edge("ask", "full_analysis")
+    graph.set_entry_point("full_analysis")
+    graph.add_edge("full_analysis", "insight_handler")
+    saleforceGraph = graph.compile()
+    state = {}
+    result = saleforceGraph.invoke(state)
+    print(result["result"])
     return {"message": "Report generated successfully"}
 
 if __name__ == '__main__':
     app.run(debug=True , port=5000)
+    
 
