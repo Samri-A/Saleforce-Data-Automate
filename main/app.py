@@ -16,7 +16,7 @@ from tools import (
     alerts_tool
 )
 from handlers import full_analysis_handler , SalesforceState , insight_handler , draw_all_graphs
-from config import llm
+from config import llm , chat_llm
 import langgraph
 from langgraph.graph.state import StateGraph
 
@@ -54,21 +54,18 @@ agent = initialize_agent(
     verbose=True
 )
 prompt = """system: You are a Salesforce Analyst Assistant and an intelligent agent. 
-       You have access only to the tools provided. 
-       Do not hallucinate. Only provide information returned by these tools or summarize their results. 
+       You have access only to the info provided. 
+       Do not hallucinate. Only provide information returned by thesee or explain in depth for non techincal person. 
        
-       Format your responses as follows for clarity:
-       - Use line breaks between sections
-       - Use numbered or bulleted lists when listing items
-       - Keep the output concise and easy to read
-       
-       user:"""
+       info:"""
 @app.route('/chat', methods=['POST'])
 def index():
         user_input = request.json['user_input']
-        response = agent.invoke(prompt + user_input)
+        response = agent.invoke(user_input)
         response_text = response["output"]
-        return {"response": response_text}
+        ai_analysis_text = chat_llm.predict(prompt + response_text)
+        print(ai_analysis_text)
+        return {"response": ai_analysis_text}
 
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
@@ -100,7 +97,7 @@ def report():
     saleforceGraph = graph.compile()
     state = {}
     result = saleforceGraph.invoke(state)
-    return {"report": result["result"]["output"]}
+    return {"report": result["result"]}
 
 if __name__ == '__main__':
     app.run(debug=True , port=5000)
