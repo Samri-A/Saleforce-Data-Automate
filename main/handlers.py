@@ -1,7 +1,15 @@
 from typing import TypedDict, List, Dict, Any
 import pandas as pd
-from tools import (bar_chart, line_chart, area_chart, histogram, 
-         box_plot, scatter_plot, heatmap, pie_chart, network_graph)
+from tools import ( 
+        bar_chart,
+        line_chart,
+        area_chart,
+        histogram,
+        box_plot,
+        scatter_plot,
+        heatmap,
+        pie_chart,
+        network_graph)
 from analysis import (
     Metrics,
     top_selled_product,
@@ -23,7 +31,10 @@ from analysis import (
     check_kpi_alerts
 )
 from langchain.agents import initialize_agent , AgentType
-from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferMemory 
+
+graph_memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
 SALESFORCE_REPORT_PROMPT = """
 You are a Salesforce data analysis assistant. 
 You are provided with the results of a full sales analysis pipeline. 
@@ -46,37 +57,26 @@ You are given a state object with:
 - Revenue Distribution: {revenue_distribution}
 - Correlation Matrix: {correlation_matrix}
 
-### Instructions:
-1. Begin the report with **overall KPIs** (Revenue, Invoices, Customers).
-   - If alerts exist, highlight them clearly.
-   - Use `bar_chart` or `pie_chart` to show KPI breakdowns.
-
-2. Show **top performing products and countries** with `bar_chart`.
-   - Also show **least performing ones**.
-
-3. Show **monthly sales trend** and **growth rates** with `line_chart` or `area_chart`.
-
-4. Use `box_plot` and `histogram` to visualize **revenue distribution**.
-
-5. Visualize **customer segmentation**:
-   - Use `scatter_plot` (Recency vs Frequency vs Monetary, colored by cluster).
-   - Use `bar_chart` to show number of customers per cluster.
-
-6. Show **top customers by revenue** with `bar_chart`.
-
-7. Show **correlation matrix** as a `heatmap`.
-
-8. If cohort analysis is provided, visualize it with a `heatmap`.
-
-9. End with **insights & recommendations**, based on trends and alerts.
 
 ### Output Requirements:
-- Call the correct visualization tools (`bar_chart`, `line_chart`, `area_chart`, 
-  `histogram`, `box_plot`, `scatter_plot`, `heatmap`, `pie_chart`, `network_graph`) 
-  for each relevant dataset.
-- Return a structured business report in natural language along with references 
-  to the generated graph images.
+- Use correct graphs if available : {graphs}
+- Return a structured business report along with references 
+  to the graph images.
+
+
 """
+
+# ### Available Graphs:
+# You already have generated graphs stored at these locations:
+# {graphs}
+
+# ### Instructions for Graphs:
+# - When you create a new chart, always give it a clear, descriptive title 
+#   (e.g., "Monthly Revenue Trend", "Top 10 Customers by Revenue").
+# - If a graph with that title already exists in {graphs}, just reference it 
+#   instead of redrawing.
+
+
 
 class SalesforceState(TypedDict, total=False):
     query: str
@@ -102,8 +102,9 @@ class SalesforceState(TypedDict, total=False):
 
     revenue_distribution: Dict[str, float]
     correlation_matrix: Dict[str, Dict[str, float]]
-
+    
     alerts: List[str]
+    graphs: str
 
 
 def ask_handler(state: SalesforceState, user_query: str) -> SalesforceState:
@@ -185,25 +186,55 @@ def full_analysis_handler(state: SalesforceState, df: pd.DataFrame) -> Salesforc
 
 
 
-
-
 def insight_handler(state: SalesforceState, llm) -> SalesforceState:
-    tools = [bar_chart, line_chart, area_chart, histogram, 
-             box_plot, scatter_plot, heatmap, pie_chart, network_graph]
-
-    if "steps_completed" not in state:
-        state["steps_completed"] = []
-
     prompt = SALESFORCE_REPORT_PROMPT.format(**state)
-    memory = ConversationBufferMemory(memory_key="chat_history" , return_messages=True) 
-    agent = initialize_agent(
-        tools, llm,
+    state["result"] = llm.invoke(prompt)
+    return state
+
+
+
+def draw_all_graphs(state: SalesforceState, llm) -> Dict[str, str]:
+    prompt = f"""
+    Generate all graphs from the SalesforceState data and return
+    a dictionary mapping chart titles to their saved file paths.
+    
+    The following graphs will be generated:
+    
+        - "Top Products by Sales", "bar_chart",{ state.get("top_selled_products")}
+        - "Top Products by Revenue", "bar_chart", {state.get("top_revenue_products")}
+        - "Monthly Sales Trend", "line_chart", {state.get("monthly_sales_trend")}
+        - "Monthly Revenue Stats", "area_chart", {state.get("monthly_stats")}
+        - "Revenue Distribution", "pie_chart", {state.get("revenue_distribution")}
+        - "Correlation Matrix", "heatmap", {state.get("correlation_matrix")}
+        - "Customer Retention Cohort", "scatter_plot", {state.get("cohort_analysis")}
+        - "Top Customers by Revenue", "bar_chart", {state.get("top_customers")}
+        - "Least Performing Products", "bar_chart", {state.get("least_product_sales")}
+        - "Least Performing Countries", "bar_chart", {state.get("least_country_sales")}
+    
+    Returns:
+        Dict[str, str]: Mapping of all chart titles to their corresponding file paths.
+    """
+
+    tools = [
+        bar_chart,
+        line_chart,
+        area_chart,
+        histogram,
+        box_plot,
+        scatter_plot,
+        heatmap,
+        pie_chart,
+        network_graph
+    ]
+    
+    graph_agent = initialize_agent(
+        tools=tools,
+        llm=llm,
         agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-        memory=memory,
+        memory=graph_memory,
         verbose=True
     )
-    state["result"] = agent.invoke(prompt + f"\nSteps completed: {state['steps_completed']}")
-    
-    state["steps_completed"].append("overall_kpis")
-    
+
+    graph_results = graph_agent.invoke(prompt)
+    state["graphs"] = graph_results
     return state
