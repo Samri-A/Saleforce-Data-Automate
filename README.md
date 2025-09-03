@@ -1,8 +1,8 @@
 # Saleforce Data Automate
 
 Saleforce Data Automate is a small full-stack project that provides
-Salesforce-style sales analysis and report automation using a Flask
-backend (analysis + LLM-driven reporting) and a React + TypeScript
+Salesforce-style sales analysis and report automation using a Langchain , Langgraph and Flask for
+backend  and a React + TypeScrip
 frontend (dashboard + chat UI).
 
 This README explains the project structure, environment variables,
