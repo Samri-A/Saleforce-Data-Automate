@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Box, Typography, TextField, IconButton, Paper, Avatar } from "@mui/material";  
+import { Box, Typography, TextField, IconButton, Paper } from "@mui/material";  
 import SendIcon from "@mui/icons-material/Send";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-
+import DOMPurify from "dompurify";
 async function getAIResponse(userInput: string): Promise<string> {
   const response = await fetch("http://localhost:5000/chat", {
     method: "POST",
@@ -81,20 +80,25 @@ function ChatPage() {
               }}
             >
               <Box display="flex" alignItems="center">
-                {msg.sender === "ai"}
-                <Box>
+                {msg.sender === "ai" ? (
+                   <div dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(msg.text),
+              }}/>  
+                 
+                ):
+                (<Box>
                   <Typography>{msg.text}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     {msg.time}
                   </Typography>
-                </Box>
+                </Box>)}
               </Box>
             </Paper>
           </Box>
         ))}
       </Box>
 
-      <Box display="flex" alignItems="center" px={2} py={1}>
+      <Box display="flex" alignItems="center" px={2} py={1} mb={3}>
         <TextField
           fullWidth
           placeholder="Type your message..."
