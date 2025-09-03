@@ -53,9 +53,11 @@ agent = initialize_agent(
     handle_parsing_errors = True, 
     verbose=True
 )
-prompt = """system: You are a Salesforce Analyst Assistant and an intelligent agent. 
+prompt = """
+      :user_asked
+      system: You are a Salesforce Analyst Assistant and an intelligent agent. 
        You have access only to the info provided. 
-       Do not hallucinate. Only provide information returned by thesee or explain in depth for non techincal person. 
+       Do not hallucinate. Only provide information returned by these or explain in depth for non techincal person. 
        
        info:"""
 @app.route('/chat', methods=['POST'])
@@ -63,7 +65,7 @@ def index():
         user_input = request.json['user_input']
         response = agent.invoke(user_input)
         response_text = response["output"]
-        ai_analysis_text = chat_llm.predict(prompt + response_text)
+        ai_analysis_text = chat_llm.predict(user_input + prompt + response_text)
         print(ai_analysis_text)
         return {"response": ai_analysis_text}
 
