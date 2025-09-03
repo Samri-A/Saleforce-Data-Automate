@@ -15,7 +15,7 @@ from tools import (
     growth_tool,
     alerts_tool
 )
-from handlers import full_analysis_handler , SalesforceState , insight_handler
+from handlers import full_analysis_handler , SalesforceState , insight_handler , draw_all_graphs
 from config import llm
 import langgraph
 from langgraph.graph.state import StateGraph
@@ -53,12 +53,22 @@ agent = initialize_agent(
     handle_parsing_errors = True, 
     verbose=True
 )
-
+prompt = """system: You are a Salesforce Analyst Assistant and an intelligent agent. 
+       You have access only to the tools provided. 
+       Do not hallucinate. Only provide information returned by these tools or summarize their results. 
+       
+       Format your responses as follows for clarity:
+       - Use line breaks between sections
+       - Use numbered or bulleted lists when listing items
+       - Keep the output concise and easy to read
+       
+       user:"""
 @app.route('/chat', methods=['POST'])
 def index():
         user_input = request.json['user_input']
-        response = agent.invoke(user_input)
-        return {"response": response}
+        response = agent.invoke(prompt + user_input)
+        response_text = response["output"]
+        return {"response": response_text}
 
 @app.route('/dashboard', methods=['GET'])
 def dashboard():
@@ -67,7 +77,6 @@ def dashboard():
     region_sales = sales_country(df).to_dict()
     # growth = monthly_growth(df)
     # print(growth)
-    report()
     return (
             {"Total Revenue": f"${metrics['total_revenue']:.2f}",
             "Total Invoices": metrics['total_invoices'],
@@ -79,19 +88,19 @@ def dashboard():
         )
 
 
-# @app.route('/report' , methods=['GET'])
+@app.route('/report' , methods=['GET'])
 def report():
     graph =StateGraph(state_schema= SalesforceState)
     graph.add_node("full_analysis", lambda state: full_analysis_handler(state= state, df=df))
     graph.add_node("insight_handler" , lambda state: insight_handler( state=state, llm=llm))
-    
+    graph.add_node("draw_all_graphs" ,lambda state: draw_all_graphs( state=state, llm=llm ) )
     graph.set_entry_point("full_analysis")
-    graph.add_edge("full_analysis", "insight_handler")
+    graph.add_edge("full_analysis", "draw_all_graphs")
+    graph.add_edge("draw_all_graphs" ,"insight_handler" )
     saleforceGraph = graph.compile()
     state = {}
     result = saleforceGraph.invoke(state)
-    print(result["result"])
-    return {"message": "Report generated successfully"}
+    return {"report": result["result"]["output"]}
 
 if __name__ == '__main__':
     app.run(debug=True , port=5000)
