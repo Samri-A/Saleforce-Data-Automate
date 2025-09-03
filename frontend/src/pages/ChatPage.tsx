@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Box, Typography, TextField, IconButton, Paper } from "@mui/material";  
 import SendIcon from "@mui/icons-material/Send";
 import DOMPurify from "dompurify";
+import {marked } from "marked";
 async function getAIResponse(userInput: string): Promise<string> {
   const response = await fetch("http://localhost:5000/chat", {
     method: "POST",
@@ -82,7 +83,7 @@ function ChatPage() {
               <Box display="flex" alignItems="center">
                 {msg.sender === "ai" ? (
                    <div dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(msg.text),
+                __html: DOMPurify.sanitize(marked(msg.text)),
               }}/>  
                  
                 ):
