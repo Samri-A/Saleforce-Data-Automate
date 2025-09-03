@@ -20,7 +20,7 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined';
-
+import jsPDF from "jspdf";
 
 const drawerWidth = 240;
 
@@ -69,7 +69,30 @@ function App() {
 );
 
 
+    const [responseText, setResponseText] = useState();
 
+    const fetchLlmResponse = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/report");
+        const data = await res.json();
+        setResponseText(data.text || "");
+      } catch (err) {
+        console.error("Failed to fetch report:", err);
+      }
+    };
+  
+    const generatePdf = () => {
+      fetchLlmResponse();
+      if (!responseText) return;
+  
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth() - 20;
+      const lines = doc.splitTextToSize(responseText["report"], pageWidth);
+  
+      doc.text(lines, 10, 10);
+      doc.save("llm_response.pdf");
+    };
+  
   return (
     <Box sx={{ display: "flex" }}>
       <CssBaseline />
@@ -95,7 +118,7 @@ function App() {
             SaleforceAnalysis
           </Typography>
           <Box marginLeft={'auto'} >
-          <Button variant="contained" sx={{ textTransform: "none"}} >
+          <Button variant="contained" sx={{ textTransform: "none"}} onClick={generatePdf}>
             <CalendarTodayOutlinedIcon/>
             <Typography fontSize={'14px'}>View Report</Typography>
           </Button>
